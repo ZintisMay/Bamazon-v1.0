@@ -1,8 +1,19 @@
+//vars and requires
+
 var mysql = require('mysql');
 var line = "";
-var fs = require('prompt');
+var prompt = require('prompt');
 prompt.start();
 
+//function vars
+var userID = 0;//this var holds the id# the user inputs
+var theQuantity = 0; // thie var holds the quantity the user inputs
+// var desire = 0;
+var change = 0; // this var holds stockquantity - userquantity
+var stock = 0; //this is the stockquantity held locally
+var cost = 0; // this is the sum total of user transactions
+
+//make connection object
 var connection = mysql.createConnection({
 	host: "LocalHost",
 	port: 3306,
@@ -11,13 +22,8 @@ var connection = mysql.createConnection({
 	database: "Bamazon"
 });
 
-//update table with current number
 
-//give a running total of all transactions
-console.log();
-console.log("Would you like to buy something?");
-console.log();
-
+//creates functioning connection to db
 connection.connect(function(err){
 	// if there is an error log it
 	if (err) {
@@ -32,45 +38,149 @@ connection.connect(function(err){
 
 });
 
-connection.query("SELECT * FROM products", function(err, res){
-	if (err) throw err;
+//accesses all items from DB, calls userbegin
 
-	// console.log(res);
+function showitems(){
 
-	// console.log(res[0].ItemID + ": " + res[0].ProductName + ': $' + res[0].Price + "(Stock: " + res[0].StockQuantity + ")");
+	connection.query("SELECT * FROM products ORDER BY ItemID ASC", function(err, res){
 
-	// console.log(res.length);
-
-	for(q=0;q<res.length;q++){
-
-		displayitem(q,res);
-		line="";
-	}
-
-	// addspaces(20,line);
-	// line += res[0].ProductName;
-
-});
-
-//this function will update an item, you pass in the item id = k and quantity = j //**
-function updatequery(k, j){
-
-	connection.query("UPDATE products SET StockQuantity = " + j + " WHERE ItemID =" + k + '"', function(err, res){
+		logger();
 
 		if (err) throw err;
 
-		console.log("Updated");
+		for(q=0;q<res.length;q++){
 
-		connection.query("SELECT * FROM products WHERE ItemID = " + k + '"', function (err, res){
+			displayitem(q,res);
+			line="";
+		}
 
-			if (err) throw err;
+		logger();
 
-			console.log("Updated");
+		//this starts the user input chain
+		userbegin();
 
-			displayitem(0,res);
-		});
 	});
-} //**
+}
+
+showitems();
+
+//this function ques the user to enter an item and number successively, and checks to make sure they are valie. 
+function userbegin(){
+
+
+	if (cost == 0){
+		console.log();	
+		console.log("Would you like to buy anything? Enter the ID number of the product (or 'no' to exit):");
+
+	}else{
+		console.log();	
+		console.log("Your purchases total to: $%d", cost); 
+		console.log("Would you like anything else? Enter the ID number (or 'no' to exit):");
+
+	}	
+
+	prompt.get(['ID'],function(err, result){
+
+		userID = result.ID;
+		// console.log("user id = " + userID);
+
+		
+		if (userID == "N"||userID == "n"||userID == "no"||userID == "NO"||userID == "nO"||userID == "No"){
+
+			console.log("Your purchases totalled to: $" + cost);
+			console.log("Thank you for shopping with Bamazon.");
+			process.exit();
+
+		}else if (userID.length != 2 || userID%1 !== 0 || userID >= 20){
+
+			console.log("Try again");
+			console.log();
+
+			userbegin();
+
+		} else {
+
+			//calls howmuch, asks user for quantity 
+			userquantity();
+		}
+
+	});
+}
+
+//this is a subfunction of userbegin, it asks how many of them they want and re-calls itself if invalid
+function userquantity(){
+
+	// console.log("userquantity");
+
+	connection.query("SELECT * FROM products WHERE ItemID = " + userID, function(err, resultUQ3){
+
+		console.log("We have %d %s in stock, how many would you like?", resultUQ3[0].StockQuantity, resultUQ3[0].ProductName);
+		stock = resultUQ3[0].StockQuantity;
+	
+	});
+
+	//prompt user for quantity
+	prompt.get(['quantity'], function(err, result){
+			
+			//sets global to the result
+			theQuantity = result.quantity;
+
+			//checks for valid quantity
+			if(theQuantity <= 0 || theQuantity % 1 !== 0){
+
+				console.log("Try again");
+				userquantity();
+			}
+			// else if(isInteger(theQuantity>)) {}
+
+			else{		
+
+				//checks that quantity is not greater than stock
+				if (theQuantity <= stock){
+
+					// console.log("stock" + stock);
+					// console.log("quantity" + theQuantity);
+
+					stock = stock - theQuantity;
+
+					//updates db quantity
+					updatequery(userID, stock);
+
+					//doublecheck db quantity
+						connection.query("SELECT * FROM products WHERE ItemID = " + userID, function(err, resultUQ3){
+
+						console.log("We have %d in stock, after that purchase", resultUQ3[0].StockQuantity);
+
+						cost += Number((resultUQ3[0].Price * theQuantity).toFixed(2));			
+
+						console.log();	
+						console.log("The total cost of your transaction = $" + cost);
+						console.log();		
+					
+						});
+
+						showitems();
+
+				}else {
+
+					console.log("Not enough stock, choose a different amount:");
+					userquantity();
+					
+				}
+			}
+	});	
+}
+
+//this function will update an item, you pass in the item id = k and quantity = j 
+function updatequery(k, j){
+
+	//this updates the quantity
+	connection.query("UPDATE products SET StockQuantity = " + j + " WHERE ItemID =" + k, function(err, resultuq){
+
+		if (err) throw err;
+
+	});
+} 
 
 //this function will add spaces to item y, of array position x
 function displayitem(x,y){
@@ -98,67 +208,7 @@ function addspaces(x){
 	
 }
 
-//this function ques the user to enter an item and number successively, and checks to make sure they are valie. 
-function dosomething(){
+function logger(){
 
-	var theID = 0;
-	var theQuantity = 0;
-	var change = 0;
-
-	var stock = 0;
-	var cost = 0;
-
-	console.log("What would you like? Enter the ID number:");
-
-	prompt.get(['ID'],function(err, result){
-
-		if (result.ID.length != 2 || isInteger(result.ID) == false){
-
-			console.log("Try again");
-
-			dosomething();
-
-		} else {
-
-			theID = result.ID;
-
-			console.log(theID);
-
-			console.log("How much would you like?");
-
-			howmuch();
-		}
-
-
-
-	});
-}
-
-//this is a subfunction of dosomething, it asks how many of them they want and re-calls itself if invalid
-function howmuch(){
-	console.log("howmuchbegins");
-	prompt.get(['quantity'], function(err, result){
-			
-			//sets global to the result
-			theQuantity = result.quantity;
-
-			if(theQuantity <= 0 || isInteger(theQuantity) == false){
-				console.log("Try again");
-				howmuch();
-			}else if(isInteger(theQuantity>)) {
-
-			}else{
-				console.log("howmuch b");
-				connection.query('SELECT * FROM products WHERE ItemID = ' + theID, function(err, res){
-
-					change =  res[0].StockQuantity - change;
-
-
-				});
-
-
-				
-				//**
-			}
-	});	
+	console.log("=====================================================");
 }
